@@ -4,6 +4,7 @@ from datetime import datetime, date
 import pandas as pd
 import plotly.express as px
 import re
+from io import BytesIO
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="MoodClass", page_icon="🎒", layout="centered")
@@ -75,6 +76,12 @@ def eliminar_estudiante(nombre, grado):
     if resultado.deleted_count > 0:
         return True, "Estudiante eliminado correctamente."
     return False, "No se pudo eliminar el estudiante."
+def convertir_a_excel(df):
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        df.to_excel(writer, index=False, sheet_name="Reporte")
+    output.seek(0)
+    return output
 
 # --- OPCIONES DE MOTIVOS POR EMOCIÓN ---
 motivos_por_emocion = {
@@ -346,48 +353,59 @@ with tab2:
 
         datos = list(col_moods.find(query))
 
-        if datos:
-            df = pd.DataFrame(datos)
+if datos:
+    df = pd.DataFrame(datos)
 
-            if "emotion" not in df.columns:
-                df["emotion"] = "Sin dato"
+    if "emotion" not in df.columns:
+        df["emotion"] = "Sin dato"
 
-            conteo = df["emotion"].value_counts().reset_index()
-            conteo.columns = ["emocion", "count"]
+    conteo = df["emotion"].value_counts().reset_index()
+    conteo.columns = ["emocion", "count"]
 
-            fig = px.bar(
-                conteo,
-                x="emocion",
-                y="count",
-                text="count",
-                color="emocion",
-                title="Distribución de emociones"
-            )
-            fig.update_layout(
-                xaxis_title="Emoción",
-                yaxis_title="Cantidad",
-                showlegend=False,
-                plot_bgcolor="white",
-                paper_bgcolor="white",
-                title_font_size=20
-            )
-            st.plotly_chart(fig, use_container_width=True)
+    fig = px.bar(
+        conteo,
+        x="emocion",
+        y="count",
+        text="count",
+        color="emocion",
+        title="Distribución de emociones"
+    )
+    fig.update_layout(
+        xaxis_title="Emoción",
+        yaxis_title="Cantidad",
+        showlegend=False,
+        plot_bgcolor="white",
+        paper_bgcolor="white",
+        title_font_size=20
+    )
+    st.plotly_chart(fig, use_container_width=True)
 
-            st.markdown("### 📋 Registros del día")
+    st.markdown("### 📋 Registros del día")
 
-            columnas_mostrar = ["student_name", "grade", "moment", "emotion", "reason", "timestamp"]
+    columnas_mostrar = ["student_name", "grade", "moment", "emotion", "reason", "timestamp"]
 
-            for col in columnas_mostrar:
-                if col not in df.columns:
-                    df[col] = ""
+    for col in columnas_mostrar:
+        if col not in df.columns:
+            df[col] = ""
 
-            df_mostrar = df[columnas_mostrar].copy()
-            df_mostrar.columns = ["Nombre", "Grado", "Momento", "Emoción", "Motivo", "Fecha y hora"]
+    df_mostrar = df[columnas_mostrar].copy()
+    df_mostrar.columns = ["Nombre", "Grado", "Momento", "Emoción", "Motivo", "Fecha y hora"]
 
-            st.dataframe(df_mostrar, use_container_width=True, hide_index=True)
+    st.dataframe(df_mostrar, use_container_width=True, hide_index=True)
 
-        else:
-            st.info("No hay registros hoy para ese filtro.")
+    # ---- DESCARGA EN EXCEL ----
+    excel_file = convertir_a_excel(df_mostrar)
+
+    st.download_button(
+        label="📥 Descargar reporte en Excel",
+        data=excel_file,
+        file_name=f"reporte_moodclass_{date.today()}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True
+    )
+
+else:
+    st.info("No hay registros hoy para ese filtro.")
 
     elif pin != "":
         st.error("PIN incorrecto.")
