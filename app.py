@@ -53,7 +53,7 @@ def agregar_estudiante(nombre, grado):
         return False, "Escribe el nombre del estudiante."
 
     if not grado:
-        return False, "Selecciona o escribe el grado."
+        return False, "Selecciona un grado."
 
     existe = col_students.find_one({
         "name": {"$regex": f"^{re.escape(nombre)}$", "$options": "i"},
@@ -131,6 +131,37 @@ grados_disponibles = [
     "5to Secundaria"
 ]
 
+# --- ESTILO DOCENTE ---
+st.markdown("""
+<style>
+.card {
+    padding: 18px;
+    border-radius: 18px;
+    background: #f7f9fc;
+    border: 1px solid #e6eaf2;
+    margin-bottom: 12px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.06);
+}
+.card h4 {
+    margin: 0;
+    font-size: 16px;
+    color: #374151;
+}
+.card h2 {
+    margin: 8px 0 0 0;
+    font-size: 28px;
+    color: #111827;
+}
+.section-title {
+    font-size: 20px;
+    font-weight: 700;
+    margin-top: 10px;
+    margin-bottom: 8px;
+    color: #111827;
+}
+</style>
+""", unsafe_allow_html=True)
+
 # --- INTERFAZ ---
 st.title("🎒 MoodClass")
 tab1, tab2 = st.tabs(["👦 Estudiante", "🧑‍🏫 Docente"])
@@ -187,63 +218,101 @@ with tab1:
 
 # ---------------- DOCENTE ----------------
 with tab2:
-    st.subheader("Panel docente")
+    st.subheader("🧑‍🏫 Panel docente")
     pin = st.text_input("PIN Docente", type="password")
 
     if pin == "1234":
-        st.success("Acceso autorizado")
+        st.success("✅ Acceso autorizado")
+
+        datos_hoy = list(col_moods.find({"day": str(date.today())}))
+        estudiantes_actuales = obtener_estudiantes()
+
+        total_registros = len(datos_hoy)
+        total_estudiantes = len(estudiantes_actuales)
+
+        emocion_top = "Sin registros"
+        if datos_hoy:
+            df_temp = pd.DataFrame(datos_hoy)
+            if "emotion" in df_temp.columns and not df_temp["emotion"].empty:
+                emocion_top = df_temp["emotion"].value_counts().idxmax()
+
+        c1, c2, c3 = st.columns(3)
+
+        with c1:
+            st.markdown(f"""
+            <div class="card">
+                <h4>Registros de hoy</h4>
+                <h2>{total_registros}</h2>
+            </div>
+            """, unsafe_allow_html=True)
+
+        with c2:
+            st.markdown(f"""
+            <div class="card">
+                <h4>Estudiantes registrados</h4>
+                <h2>{total_estudiantes}</h2>
+            </div>
+            """, unsafe_allow_html=True)
+
+        with c3:
+            st.markdown(f"""
+            <div class="card">
+                <h4>Emoción más frecuente</h4>
+                <h2 style="font-size:22px;">{emocion_top}</h2>
+            </div>
+            """, unsafe_allow_html=True)
+
+        st.markdown('<div class="section-title">Gestión de estudiantes</div>', unsafe_allow_html=True)
 
         col_a, col_b = st.columns(2)
 
-        # ---- AGREGAR ESTUDIANTE ----
         with col_a:
-            st.markdown("### Agregar estudiante")
-            with st.form("form_agregar_estudiante"):
-                nuevo_estudiante = st.text_input("Nombre del nuevo estudiante")
-                nuevo_grado = st.selectbox("Grado", grados_disponibles)
-                guardar_estudiante = st.form_submit_button("Agregar estudiante")
+            with st.container(border=True):
+                st.markdown("### ➕ Agregar estudiante")
+                with st.form("form_agregar_estudiante"):
+                    nuevo_estudiante = st.text_input("Nombre del nuevo estudiante")
+                    nuevo_grado = st.selectbox("Grado", grados_disponibles)
+                    guardar_estudiante = st.form_submit_button("Agregar estudiante", use_container_width=True)
 
-                if guardar_estudiante:
-                    ok, mensaje = agregar_estudiante(nuevo_estudiante, nuevo_grado)
-                    if ok:
-                        st.success(mensaje)
-                        st.rerun()
-                    else:
-                        st.warning(mensaje)
-
-        # ---- ELIMINAR ESTUDIANTE ----
-        with col_b:
-            st.markdown("### Eliminar estudiante")
-            estudiantes_actuales_labels = obtener_nombres_estudiantes()
-
-            if estudiantes_actuales_labels:
-                with st.form("form_eliminar_estudiante"):
-                    estudiante_eliminar = st.selectbox(
-                        "Selecciona estudiante a eliminar",
-                        estudiantes_actuales_labels
-                    )
-                    eliminar_btn = st.form_submit_button("Eliminar estudiante")
-
-                    if eliminar_btn:
-                        estudiante_data = buscar_estudiante_por_label(estudiante_eliminar)
-                        if estudiante_data:
-                            ok, mensaje = eliminar_estudiante(
-                                estudiante_data["name"],
-                                estudiante_data.get("grade", "")
-                            )
-                            if ok:
-                                st.success(mensaje)
-                                st.rerun()
-                            else:
-                                st.warning(mensaje)
+                    if guardar_estudiante:
+                        ok, mensaje = agregar_estudiante(nuevo_estudiante, nuevo_grado)
+                        if ok:
+                            st.success(mensaje)
+                            st.rerun()
                         else:
-                            st.error("No se encontró el estudiante.")
-            else:
-                st.info("No hay estudiantes para eliminar.")
+                            st.warning(mensaje)
 
-        # ---- LISTA DE ESTUDIANTES ----
-        st.markdown("### Lista de estudiantes")
-        estudiantes_actuales = obtener_estudiantes()
+        with col_b:
+            with st.container(border=True):
+                st.markdown("### 🗑️ Eliminar estudiante")
+                estudiantes_actuales_labels = obtener_nombres_estudiantes()
+
+                if estudiantes_actuales_labels:
+                    with st.form("form_eliminar_estudiante"):
+                        estudiante_eliminar = st.selectbox(
+                            "Selecciona estudiante a eliminar",
+                            estudiantes_actuales_labels
+                        )
+                        eliminar_btn = st.form_submit_button("Eliminar estudiante", use_container_width=True)
+
+                        if eliminar_btn:
+                            estudiante_data = buscar_estudiante_por_label(estudiante_eliminar)
+                            if estudiante_data:
+                                ok, mensaje = eliminar_estudiante(
+                                    estudiante_data["name"],
+                                    estudiante_data.get("grade", "")
+                                )
+                                if ok:
+                                    st.success(mensaje)
+                                    st.rerun()
+                                else:
+                                    st.warning(mensaje)
+                            else:
+                                st.error("No se encontró el estudiante.")
+                else:
+                    st.info("No hay estudiantes para eliminar.")
+
+        st.markdown('<div class="section-title">Lista de estudiantes</div>', unsafe_allow_html=True)
 
         if estudiantes_actuales:
             df_students = pd.DataFrame(estudiantes_actuales)
@@ -251,25 +320,37 @@ with tab2:
                 "name": "Nombre",
                 "grade": "Grado"
             })
+
+            columnas_visibles = ["Nombre", "Grado"]
             if "created_at" in df_students.columns:
-                df_students = df_students[["Nombre", "Grado", "created_at"]]
                 df_students = df_students.rename(columns={"created_at": "Fecha de registro"})
-            st.dataframe(df_students, use_container_width=True)
+                columnas_visibles.append("Fecha de registro")
+
+            st.dataframe(df_students[columnas_visibles], use_container_width=True, hide_index=True)
         else:
             st.info("Todavía no hay estudiantes registrados.")
 
-        # ---- FILTRO POR GRADO ----
-        st.markdown("### Reporte emocional del día")
-        filtro_grado = st.selectbox("Filtrar por grado", ["Todos"] + grados_disponibles)
+        st.markdown('<div class="section-title">Reporte emocional del día</div>', unsafe_allow_html=True)
+
+        filtro1, filtro2 = st.columns(2)
+        with filtro1:
+            filtro_grado = st.selectbox("Filtrar por grado", ["Todos"] + grados_disponibles)
+        with filtro2:
+            filtro_momento = st.selectbox("Filtrar por momento", ["Todos", "Entrada", "Salida"])
 
         query = {"day": str(date.today())}
         if filtro_grado != "Todos":
             query["grade"] = filtro_grado
+        if filtro_momento != "Todos":
+            query["moment"] = filtro_momento
 
         datos = list(col_moods.find(query))
 
         if datos:
             df = pd.DataFrame(datos)
+
+            if "emotion" not in df.columns:
+                df["emotion"] = "Sin dato"
 
             conteo = df["emotion"].value_counts().reset_index()
             conteo.columns = ["emocion", "count"]
@@ -278,16 +359,33 @@ with tab2:
                 conteo,
                 x="emocion",
                 y="count",
+                text="count",
                 color="emocion",
-                title="Emociones registradas hoy"
+                title="Distribución de emociones"
+            )
+            fig.update_layout(
+                xaxis_title="Emoción",
+                yaxis_title="Cantidad",
+                showlegend=False,
+                plot_bgcolor="white",
+                paper_bgcolor="white",
+                title_font_size=20
             )
             st.plotly_chart(fig, use_container_width=True)
 
-            st.markdown("### Registros del día")
+            st.markdown("### 📋 Registros del día")
+
             columnas_mostrar = ["student_name", "grade", "moment", "emotion", "reason", "timestamp"]
+
+            for col in columnas_mostrar:
+                if col not in df.columns:
+                    df[col] = ""
+
             df_mostrar = df[columnas_mostrar].copy()
             df_mostrar.columns = ["Nombre", "Grado", "Momento", "Emoción", "Motivo", "Fecha y hora"]
-            st.dataframe(df_mostrar, use_container_width=True)
+
+            st.dataframe(df_mostrar, use_container_width=True, hide_index=True)
+
         else:
             st.info("No hay registros hoy para ese filtro.")
 
