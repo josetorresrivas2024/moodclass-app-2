@@ -324,15 +324,20 @@ with tab2:
 
         if estudiantes_actuales:
             df_students = pd.DataFrame(estudiantes_actuales)
+
+    # Crear columnas faltantes si no existen
+            columnas_originales = ["name", "grade", "created_at"]
+            for col in columnas_originales:
+                if col not in df_students.columns:
+                    df_students[col] = ""
+
             df_students = df_students.rename(columns={
                 "name": "Nombre",
-                "grade": "Grado"
+                "grade": "Grado",
+                "created_at": "Fecha de registro"
             })
 
-            columnas_visibles = ["Nombre", "Grado"]
-            if "created_at" in df_students.columns:
-                df_students = df_students.rename(columns={"created_at": "Fecha de registro"})
-                columnas_visibles.append("Fecha de registro")
+            columnas_visibles = ["Nombre", "Grado", "Fecha de registro"]
 
             st.dataframe(df_students[columnas_visibles], use_container_width=True, hide_index=True)
         else:
