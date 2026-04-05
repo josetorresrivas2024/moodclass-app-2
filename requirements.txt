@@ -1,4 +1,5 @@
 streamlit
-pymongo[srv]
+pymongo
 pandas
 plotly
+openpyxl
