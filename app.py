@@ -407,5 +407,3 @@ if datos:
 else:
     st.info("No hay registros hoy para ese filtro.")
 
-    elif pin != "":
-        st.error("PIN incorrecto.")
