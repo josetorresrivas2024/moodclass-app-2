@@ -250,41 +250,44 @@ def mostrar_botiquin_emocional(df):
 # =========================
 motivos_por_emocion = {
     "😊 Feliz": [
-        "Me fue bien en clase",
-        "Jugué con mis amigos",
-        "Mi familia me apoyó",
-        "Aprendí algo nuevo",
-        "Tuve un buen día",
-        "Otro"
+        "Casa",
+        "Profesores",
+        "Compañeros",
+        "Colegio",
+        "Salud",
+        "Prefiero no decir"
     ],
     "😐 Normal": [
-        "Todo estuvo tranquilo",
-        "Fue un día común",
-        "No pasó nada especial",
-        "Me siento estable",
-        "Otro"
+        "Casa",
+        "Profesores",
+        "Compañeros",
+        "Colegio",
+        "Salud",
+        "Prefiero no decir"
     ],
     "😢 Triste": [
-        "Tuve un problema en casa",
-        "Discutí con un amigo",
-        "Me fue mal en una tarea",
-        "Me siento solo(a)",
-        "Extraño a alguien",
-        "Otro"
+        "Casa",
+        "Profesores",
+        "Compañeros",
+        "Colegio",
+        "Salud",
+        "Prefiero no decir"
     ],
     "😡 Molesto": [
-        "Me molestaron",
-        "Discutí con alguien",
-        "No salió algo como quería",
-        "Tuve un mal momento",
-        "Otro"
+        "Casa",
+        "Profesores",
+        "Compañeros",
+        "Colegio",
+        "Salud",
+        "Prefiero no decir"
     ],
     "😴 Cansado": [
-        "Dormí poco",
-        "Tuve muchas actividades",
-        "Estoy agotado(a)",
-        "Fue un día pesado",
-        "Otro"
+        "Casa",
+        "Profesores",
+        "Compañeros",
+        "Colegio",
+        "Salud",
+        "Prefiero no decir"
     ]
 }
 
