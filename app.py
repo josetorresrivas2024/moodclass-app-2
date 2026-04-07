@@ -142,7 +142,6 @@ def mostrar_botiquin_emocional(df):
     else:
         st.success("🛠️ Actividad: Pausa breve")
         st.write("Respira profundo 5 veces y relaja el cuerpo.")
-    ...
 
 # --- OPCIONES DE MOTIVOS POR EMOCIÓN ---
 motivos_por_emocion = {
