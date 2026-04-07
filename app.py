@@ -93,6 +93,44 @@ def obtener_botiquin_emocional(emocion_predominante, total_registros, porcentaje
     ...
     
 def mostrar_botiquin_emocional(df):
+
+    if df.empty or "emotion" not in df.columns:
+        st.info("No hay datos suficientes para generar el botiquín emocional.")
+        return
+
+    conteo = df["emotion"].fillna("Sin dato").value_counts()
+    emocion_top = conteo.idxmax()
+    cantidad_top = conteo.max()
+    total = len(df)
+
+    porcentaje_top = (cantidad_top / total) * 100 if total > 0 else 0
+
+    st.markdown("### 🧰 Botiquín emocional del aula")
+
+    st.info(
+        f"**Emoción predominante:** {emocion_top}\n\n"
+        f"**Incidencia:** {cantidad_top} de {total} registros ({round(porcentaje_top,1)}%)"
+    )
+
+    if emocion_top == "😡 Molesto":
+        st.success("🛠️ Actividad: Respiración + relajación")
+        st.write("Aprieta los puños 5 segundos y suelta. Repite 4 veces.")
+
+    elif emocion_top == "😢 Triste":
+        st.success("🛠️ Actividad: Escritura emocional")
+        st.write("Escribe cómo te sientes y qué te ayudaría hoy.")
+
+    elif emocion_top == "😴 Cansado":
+        st.success("🛠️ Actividad: Activación corporal")
+        st.write("Estiramientos y respiración profunda por 2 minutos.")
+
+    elif emocion_top == "😊 Feliz":
+        st.success("🛠️ Actividad: Compartir positivo")
+        st.write("Cada estudiante dice algo bueno del día.")
+
+    else:
+        st.success("🛠️ Actividad: Pausa breve")
+        st.write("Respira profundo 5 veces y relaja el cuerpo.")
     ...
 
 # --- OPCIONES DE MOTIVOS POR EMOCIÓN ---
