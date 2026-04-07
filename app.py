@@ -87,10 +87,21 @@ def convertir_a_excel(df):
 
 # 🔥 PEGA AQUÍ TODO EL BOTIQUÍN
 def obtener_motivos_frecuentes(df, top_n=3):
-    ...
+
+    if "reason" not in df.columns:
+        return []
+
+    motivos_validos = df["reason"].fillna("").astype(str)
+    motivos_validos = motivos_validos[motivos_validos.str.strip() != ""]
+
+    if motivos_validos.empty:
+        return []
+
+    conteo = motivos_validos.value_counts().head(top_n)
+    return conteo.index.tolist()
     
 def obtener_botiquin_emocional(emocion_predominante, total_registros, porcentaje_predominante):
-    ...
+
     
 def mostrar_botiquin_emocional(df):
 
