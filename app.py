@@ -12,31 +12,40 @@ st.set_page_config(page_title="MoodClass", page_icon="🎒", layout="centered")
 # --- CONEXIÓN SEGURA ---
 try:
     uri = st.secrets["MONGO_URI"]
-except:
+except Exception:
     uri = "mongodb+srv://TU_USUARIO:TU_PASSWORD@cluster0.hzl7cg0.mongodb.net/moodclass_db?retryWrites=true&w=majority&appName=Cluster0"
+
 
 @st.cache_resource
 def get_database():
     client = MongoClient(uri)
     return client["moodclass_db"]
 
+
 db = get_database()
 col_moods = db["moods"]
 col_students = db["students"]
 
-# --- FUNCIONES ---
+
+# =========================
+# FUNCIONES GENERALES
+# =========================
 def normalizar_texto(texto):
-    return re.sub(r"\s+", " ", texto.strip())
+    return re.sub(r"\s+", " ", str(texto).strip())
+
 
 def obtener_estudiantes():
     estudiantes = list(
-        col_students.find({}, {"_id": 0, "name": 1, "grade": 1}).sort([("grade", 1), ("name", 1)])
+        col_students.find({}, {"_id": 0, "name": 1, "grade": 1, "created_at": 1})
+        .sort([("grade", 1), ("name", 1)])
     )
     return estudiantes
 
+
 def obtener_nombres_estudiantes():
     estudiantes = obtener_estudiantes()
-    return [f'{e["name"]} - {e.get("grade", "Sin grado")}' for e in estudiantes]
+    return [f'{e["name"]} - {e.get("grade", "Sin grado")}' for e in estudiantes if "name" in e]
+
 
 def buscar_estudiante_por_label(label):
     estudiantes = obtener_estudiantes()
@@ -45,6 +54,7 @@ def buscar_estudiante_por_label(label):
         if actual == label:
             return e
     return None
+
 
 def agregar_estudiante(nombre, grado):
     nombre = normalizar_texto(nombre)
@@ -71,11 +81,13 @@ def agregar_estudiante(nombre, grado):
     })
     return True, "Estudiante agregado correctamente."
 
+
 def eliminar_estudiante(nombre, grado):
     resultado = col_students.delete_one({"name": nombre, "grade": grado})
     if resultado.deleted_count > 0:
         return True, "Estudiante eliminado correctamente."
     return False, "No se pudo eliminar el estudiante."
+
 
 def convertir_a_excel(df):
     output = BytesIO()
@@ -85,9 +97,10 @@ def convertir_a_excel(df):
     return output
 
 
-# 🔥 PEGA AQUÍ TODO EL BOTIQUÍN
+# =========================
+# BOTIQUÍN EMOCIONAL
+# =========================
 def obtener_motivos_frecuentes(df, top_n=3):
-
     if "reason" not in df.columns:
         return []
 
@@ -99,51 +112,142 @@ def obtener_motivos_frecuentes(df, top_n=3):
 
     conteo = motivos_validos.value_counts().head(top_n)
     return conteo.index.tolist()
-    
+
+
 def obtener_botiquin_emocional(emocion_predominante, total_registros, porcentaje_predominante):
+    if porcentaje_predominante >= 60:
+        nivel = "Alta prioridad grupal"
+    elif porcentaje_predominante >= 40:
+        nivel = "Atención recomendada"
+    else:
+        nivel = "Seguimiento preventivo"
 
-    
+    herramientas = {
+        "😊 Feliz": {
+            "titulo": "Potenciar clima positivo",
+            "objetivo": "Aprovechar la disposición positiva del grupo para fortalecer la participación.",
+            "actividad_principal": "Ronda rápida: cada estudiante comparte algo bueno de su día en una frase.",
+            "duracion": "3 a 5 minutos",
+            "guia_docente": "Refuerza con mensajes breves y positivos. Usa esta energía para iniciar una actividad colaborativa.",
+            "visualizacion": "Pide que recuerden un momento agradable del día y lo describan mentalmente por 20 segundos.",
+            "materiales": "No requiere materiales."
+        },
+        "😐 Normal": {
+            "titulo": "Activación suave del grupo",
+            "objetivo": "Movilizar la atención y generar disposición para aprender.",
+            "actividad_principal": "Pausa breve de enfoque: respiración suave por 1 minuto y estiramiento de brazos y hombros.",
+            "duracion": "2 a 3 minutos",
+            "guia_docente": "Haz una transición tranquila hacia la actividad principal y plantea una consigna sencilla al inicio.",
+            "visualizacion": "Invita a cerrar los ojos 15 segundos y pensar: 'Estoy aquí, listo para empezar'.",
+            "materiales": "No requiere materiales."
+        },
+        "😢 Triste": {
+            "titulo": "Contención emocional breve",
+            "objetivo": "Favorecer regulación emocional y sensación de acompañamiento.",
+            "actividad_principal": "Pausa de escritura: escribe una palabra sobre cómo te sientes y una cosa que podría ayudarte hoy.",
+            "duracion": "4 a 6 minutos",
+            "guia_docente": "Valida la emoción sin presionar a compartir. Usa un tono calmado y seguro.",
+            "visualizacion": "Invita a recordar un momento en que se sintieron acompañados o tranquilos.",
+            "materiales": "Hoja o cuaderno y lápiz."
+        },
+        "😡 Molesto": {
+            "titulo": "Regulación y descarga controlada",
+            "objetivo": "Reducir la activación y prevenir reacciones impulsivas.",
+            "actividad_principal": "Respiración + tensión-relajación: apretar puños 5 segundos y soltar, repetir 4 veces.",
+            "duracion": "3 a 4 minutos",
+            "guia_docente": "Evita confrontar. Marca pausas cortas y claras. Da instrucciones concretas.",
+            "visualizacion": "Pide imaginar que el enojo baja lentamente como una ola que pierde fuerza.",
+            "materiales": "No requiere materiales."
+        },
+        "😴 Cansado": {
+            "titulo": "Activación corporal breve",
+            "objetivo": "Recuperar energía, atención y presencia en el aula.",
+            "actividad_principal": "Micropausa activa: estiramiento de cuello, hombros, brazos y respiración profunda.",
+            "duracion": "2 a 4 minutos",
+            "guia_docente": "Haz que todos se pongan de pie si es posible. Luego inicia con una tarea corta y clara.",
+            "visualizacion": "Invita a imaginar que encienden su energía poco a poco, como una luz que aumenta.",
+            "materiales": "No requiere materiales."
+        }
+    }
+
+    base = herramientas.get(
+        emocion_predominante,
+        {
+            "titulo": "Pausa breve de regulación",
+            "objetivo": "Favorecer calma y disposición para continuar.",
+            "actividad_principal": "Respirar profundo 5 veces y relajar hombros.",
+            "duracion": "2 minutos",
+            "guia_docente": "Observa al grupo antes de continuar con la actividad.",
+            "visualizacion": "Invita a pensar en un lugar tranquilo por unos segundos.",
+            "materiales": "No requiere materiales."
+        }
+    )
+
+    return {
+        "nivel": nivel,
+        "emocion_predominante": emocion_predominante,
+        "total_registros": total_registros,
+        "porcentaje_predominante": round(porcentaje_predominante, 1),
+        **base
+    }
+
+
 def mostrar_botiquin_emocional(df):
-
     if df.empty or "emotion" not in df.columns:
         st.info("No hay datos suficientes para generar el botiquín emocional.")
         return
 
     conteo = df["emotion"].fillna("Sin dato").value_counts()
     emocion_top = conteo.idxmax()
-    cantidad_top = conteo.max()
+    cantidad_top = int(conteo.max())
     total = len(df)
 
     porcentaje_top = (cantidad_top / total) * 100 if total > 0 else 0
+    botiquin = obtener_botiquin_emocional(emocion_top, total, porcentaje_top)
+    motivos_frecuentes = obtener_motivos_frecuentes(df)
 
     st.markdown("### 🧰 Botiquín emocional del aula")
 
-    st.info(
-        f"**Emoción predominante:** {emocion_top}\n\n"
-        f"**Incidencia:** {cantidad_top} de {total} registros ({round(porcentaje_top,1)}%)"
-    )
+    col_a, col_b = st.columns(2)
 
-    if emocion_top == "😡 Molesto":
-        st.success("🛠️ Actividad: Respiración + relajación")
-        st.write("Aprieta los puños 5 segundos y suelta. Repite 4 veces.")
+    with col_a:
+        st.info(
+            f"**Emoción predominante:** {botiquin['emocion_predominante']}\n\n"
+            f"**Incidencia:** {cantidad_top} de {total} registros ({botiquin['porcentaje_predominante']}%)\n\n"
+            f"**Nivel de atención:** {botiquin['nivel']}"
+        )
 
-    elif emocion_top == "😢 Triste":
-        st.success("🛠️ Actividad: Escritura emocional")
-        st.write("Escribe cómo te sientes y qué te ayudaría hoy.")
+    with col_b:
+        st.success(
+            f"**Herramienta sugerida:** {botiquin['titulo']}\n\n"
+            f"**Duración sugerida:** {botiquin['duracion']}"
+        )
 
-    elif emocion_top == "😴 Cansado":
-        st.success("🛠️ Actividad: Activación corporal")
-        st.write("Estiramientos y respiración profunda por 2 minutos.")
+    with st.container(border=True):
+        st.markdown("#### 🎯 Objetivo")
+        st.write(botiquin["objetivo"])
 
-    elif emocion_top == "😊 Feliz":
-        st.success("🛠️ Actividad: Compartir positivo")
-        st.write("Cada estudiante dice algo bueno del día.")
+        st.markdown("#### 🛠️ Actividad principal")
+        st.write(botiquin["actividad_principal"])
 
-    else:
-        st.success("🛠️ Actividad: Pausa breve")
-        st.write("Respira profundo 5 veces y relaja el cuerpo.")
+        st.markdown("#### 🌿 Visualización o apoyo complementario")
+        st.write(botiquin["visualizacion"])
 
-# --- OPCIONES DE MOTIVOS POR EMOCIÓN ---
+        st.markdown("#### 👩‍🏫 Guía breve para el docente")
+        st.write(botiquin["guia_docente"])
+
+        st.markdown("#### 📎 Materiales")
+        st.write(botiquin["materiales"])
+
+        if motivos_frecuentes:
+            st.markdown("#### 📌 Motivos más frecuentes del grupo")
+            for motivo in motivos_frecuentes:
+                st.write(f"- {motivo}")
+
+
+# =========================
+# DATOS DE INTERFAZ
+# =========================
 motivos_por_emocion = {
     "😊 Feliz": [
         "Me fue bien en clase",
@@ -198,7 +302,9 @@ grados_disponibles = [
     "5to Secundaria"
 ]
 
-# --- ESTILO DOCENTE ---
+# =========================
+# ESTILOS
+# =========================
 st.markdown("""
 <style>
 .card {
@@ -229,11 +335,15 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- INTERFAZ ---
+# =========================
+# INTERFAZ
+# =========================
 st.title("🎒 MoodClass")
 tab1, tab2 = st.tabs(["👦 Estudiante", "🧑‍🏫 Docente"])
 
-# ---------------- ESTUDIANTE ----------------
+# -------------------------
+# ESTUDIANTE
+# -------------------------
 with tab1:
     st.subheader("Registro emocional del estudiante")
 
@@ -283,7 +393,9 @@ with tab1:
                     })
                     st.success("¡Estado guardado correctamente!")
 
-# ---------------- DOCENTE ----------------
+# -------------------------
+# DOCENTE
+# -------------------------
 with tab2:
     st.subheader("🧑‍🏫 Panel docente")
     pin = st.text_input("PIN Docente", type="password")
@@ -384,9 +496,7 @@ with tab2:
         if estudiantes_actuales:
             df_students = pd.DataFrame(estudiantes_actuales)
 
-    # Crear columnas faltantes si no existen
-            columnas_originales = ["name", "grade", "created_at"]
-            for col in columnas_originales:
+            for col in ["name", "grade", "created_at"]:
                 if col not in df_students.columns:
                     df_students[col] = ""
 
@@ -396,9 +506,11 @@ with tab2:
                 "created_at": "Fecha de registro"
             })
 
-            columnas_visibles = ["Nombre", "Grado", "Fecha de registro"]
-
-            st.dataframe(df_students[columnas_visibles], use_container_width=True, hide_index=True)
+            st.dataframe(
+                df_students[["Nombre", "Grado", "Fecha de registro"]],
+                use_container_width=True,
+                hide_index=True
+            )
         else:
             st.info("Todavía no hay estudiantes registrados.")
 
@@ -444,11 +556,12 @@ with tab2:
                 title_font_size=20
             )
             st.plotly_chart(fig, use_container_width=True)
+
             mostrar_botiquin_emocional(df)
+
             st.markdown("### 📋 Registros del día")
 
             columnas_mostrar = ["student_name", "grade", "moment", "emotion", "reason", "timestamp"]
-
             for col in columnas_mostrar:
                 if col not in df.columns:
                     df[col] = ""
@@ -459,158 +572,6 @@ with tab2:
             st.dataframe(df_mostrar, use_container_width=True, hide_index=True)
 
             excel_file = convertir_a_excel(df_mostrar)
-            def obtener_motivos_frecuentes(df, top_n=3):
-    if "reason" not in df.columns:
-        return []
-
-    motivos_validos = df["reason"].fillna("").astype(str)
-    motivos_validos = motivos_validos[motivos_validos.str.strip() != ""]
-
-    if motivos_validos.empty:
-        return []
-
-    conteo = motivos_validos.value_counts().head(top_n)
-    return conteo.index.tolist()
-
-
-def obtener_botiquin_emocional(emocion_predominante, total_registros, porcentaje_predominante):
-    """
-    Devuelve una recomendación de botiquín emocional según la emoción más frecuente del grupo.
-    """
-
-    # Nivel general de prioridad según concentración
-    if porcentaje_predominante >= 60:
-        nivel = "Alta prioridad grupal"
-    elif porcentaje_predominante >= 40:
-        nivel = "Atención recomendada"
-    else:
-        nivel = "Seguimiento preventivo"
-
-    herramientas = {
-        "😊 Feliz": {
-            "titulo": "Potenciar clima positivo",
-            "objetivo": "Aprovechar la disposición positiva del grupo para fortalecer la participación.",
-            "actividad_principal": "Ronda rápida: cada estudiante comparte algo bueno de su día en una frase.",
-            "duracion": "3 a 5 minutos",
-            "guia_docente": "Refuerza con mensajes breves y positivos. Usa esta energía para iniciar una actividad colaborativa.",
-            "visualizacion": "Pide que recuerden un momento agradable del día y lo describan mentalmente por 20 segundos.",
-            "materiales": "No requiere materiales."
-        },
-        "😐 Normal": {
-            "titulo": "Activación suave del grupo",
-            "objetivo": "Movilizar la atención y generar disposición para aprender.",
-            "actividad_principal": "Pausa breve de enfoque: respiración suave por 1 minuto y estiramiento de brazos y hombros.",
-            "duracion": "2 a 3 minutos",
-            "guia_docente": "Haz una transición tranquila hacia la actividad principal y plantea una consigna sencilla al inicio.",
-            "visualizacion": "Invita a cerrar los ojos 15 segundos y pensar: 'Estoy aquí, listo para empezar'.",
-            "materiales": "No requiere materiales."
-        },
-        "😢 Triste": {
-            "titulo": "Contención emocional breve",
-            "objetivo": "Favorecer regulación emocional y sensación de acompañamiento.",
-            "actividad_principal": "Pausa de escritura: 'Escribe una palabra sobre cómo te sientes y una cosa que podría ayudarte hoy'.",
-            "duracion": "4 a 6 minutos",
-            "guia_docente": "Valida la emoción sin presionar a compartir. Usa un tono calmado y seguro.",
-            "visualizacion": "Invita a recordar un momento en que se sintieron acompañados o tranquilos.",
-            "materiales": "Hoja o cuaderno y lápiz."
-        },
-        "😡 Molesto": {
-            "titulo": "Regulación y descarga controlada",
-            "objetivo": "Reducir la activación y prevenir reacciones impulsivas.",
-            "actividad_principal": "Respiración + tensión-relajación: apretar puños 5 segundos y soltar, repetir 4 veces.",
-            "duracion": "3 a 4 minutos",
-            "guia_docente": "Evita confrontar. Marca pausas cortas y claras. Da instrucciones concretas.",
-            "visualizacion": "Pide imaginar que el enojo baja lentamente como una ola que pierde fuerza.",
-            "materiales": "No requiere materiales."
-        },
-        "😴 Cansado": {
-            "titulo": "Activación corporal breve",
-            "objetivo": "Recuperar energía, atención y presencia en el aula.",
-            "actividad_principal": "Micropausa activa: estiramiento de cuello, hombros, brazos y respiración profunda.",
-            "duracion": "2 a 4 minutos",
-            "guia_docente": "Haz que todos se pongan de pie si es posible. Luego inicia con una tarea corta y clara.",
-            "visualizacion": "Invita a imaginar que encienden su energía poco a poco, como una luz que aumenta.",
-            "materiales": "No requiere materiales."
-        }
-    }
-
-    base = herramientas.get(
-        emocion_predominante,
-        {
-            "titulo": "Pausa breve de regulación",
-            "objetivo": "Favorecer calma y disposición para continuar.",
-            "actividad_principal": "Respirar profundo 5 veces y relajar hombros.",
-            "duracion": "2 minutos",
-            "guia_docente": "Observa al grupo antes de continuar con la actividad.",
-            "visualizacion": "Invita a pensar en un lugar tranquilo por unos segundos.",
-            "materiales": "No requiere materiales."
-        }
-    )
-
-    return {
-        "nivel": nivel,
-        "emocion_predominante": emocion_predominante,
-        "total_registros": total_registros,
-        "porcentaje_predominante": round(porcentaje_predominante, 1),
-        **base
-    }
-
-
-def mostrar_botiquin_emocional(df):
-    """
-    Analiza el DataFrame del día filtrado y muestra una recomendación de botiquín emocional.
-    """
-    if df.empty or "emotion" not in df.columns:
-        st.info("No hay datos suficientes para generar el botiquín emocional.")
-        return
-
-    conteo = df["emotion"].fillna("Sin dato").value_counts()
-    emocion_top = conteo.idxmax()
-    cantidad_top = conteo.max()
-    total = len(df)
-
-    porcentaje_top = (cantidad_top / total) * 100 if total > 0 else 0
-    botiquin = obtener_botiquin_emocional(emocion_top, total, porcentaje_top)
-    motivos_frecuentes = obtener_motivos_frecuentes(df)
-
-    st.markdown("### 🧰 Botiquín emocional del aula")
-
-    col_a, col_b = st.columns([1, 1])
-
-    with col_a:
-        st.info(
-            f"**Emoción predominante:** {botiquin['emocion_predominante']}\n\n"
-            f"**Incidencia:** {cantidad_top} de {total} registros ({botiquin['porcentaje_predominante']}%)\n\n"
-            f"**Nivel de atención:** {botiquin['nivel']}"
-        )
-
-    with col_b:
-        st.success(
-            f"**Herramienta sugerida:** {botiquin['titulo']}\n\n"
-            f"**Duración sugerida:** {botiquin['duracion']}"
-        )
-
-    with st.container(border=True):
-        st.markdown("#### 🎯 Objetivo")
-        st.write(botiquin["objetivo"])
-
-        st.markdown("#### 🛠️ Actividad principal")
-        st.write(botiquin["actividad_principal"])
-
-        st.markdown("#### 🌿 Visualización o apoyo complementario")
-        st.write(botiquin["visualizacion"])
-
-        st.markdown("#### 👩‍🏫 Guía breve para el docente")
-        st.write(botiquin["guia_docente"])
-
-        st.markdown("#### 📎 Materiales")
-        st.write(botiquin["materiales"])
-
-        if motivos_frecuentes:
-            st.markdown("#### 📌 Motivos más frecuentes del grupo")
-            for motivo in motivos_frecuentes:
-                st.write(f"- {motivo}")
-
             st.download_button(
                 label="📥 Descargar reporte en Excel",
                 data=excel_file,
@@ -618,7 +579,6 @@ def mostrar_botiquin_emocional(df):
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True
             )
-
         else:
             st.info("No hay registros hoy para ese filtro.")
 
