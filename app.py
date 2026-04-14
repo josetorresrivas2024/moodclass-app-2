@@ -83,7 +83,14 @@ def agregar_estudiante(nombre, grado):
 
 
 def eliminar_estudiante(nombre, grado):
-    resultado = col_students.delete_one({"name": nombre, "grade": grado})
+    nombre = normalizar_texto(nombre)
+    grado = normalizar_texto(grado)
+
+    resultado = col_students.delete_one({
+        "name": {"$regex": f"^{re.escape(nombre)}$", "$options": "i"},
+        "grade": {"$regex": f"^{re.escape(grado)}$", "$options": "i"}
+    })
+
     if resultado.deleted_count > 0:
         return True, "Estudiante eliminado correctamente."
     return False, "No se pudo eliminar el estudiante."
