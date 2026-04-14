@@ -36,7 +36,7 @@ def normalizar_texto(texto):
 
 def obtener_estudiantes():
     estudiantes = list(
-        col_students.find({}, {"_id": 0, "name": 1, "grade": 1, "created_at": 1})
+        col_students.find({}, {"name": 1, "grade": 1, "created_at": 1})
         .sort([("grade", 1), ("name", 1)])
     )
     return estudiantes
@@ -44,15 +44,28 @@ def obtener_estudiantes():
 
 def obtener_nombres_estudiantes():
     estudiantes = obtener_estudiantes()
-    return [f'{e["name"]} - {e.get("grade", "Sin grado")}' for e in estudiantes if "name" in e]
+    nombres = []
+
+    for e in estudiantes:
+        if "name" in e:
+            grado = e.get("grade")
+            grado = "Sin grado" if grado is None or str(grado).strip() == "" else str(grado).strip()
+            nombres.append(f'{e["name"]} - {grado}')
+
+    return nombres
 
 
 def buscar_estudiante_por_label(label):
     estudiantes = obtener_estudiantes()
+
     for e in estudiantes:
-        actual = f'{e["name"]} - {e.get("grade", "Sin grado")}'
+        grado = e.get("grade")
+        grado = "Sin grado" if grado is None or str(grado).strip() == "" else str(grado).strip()
+        actual = f'{e["name"]} - {grado}'
+
         if actual == label:
             return e
+
     return None
 
 
@@ -82,16 +95,8 @@ def agregar_estudiante(nombre, grado):
     return True, "Estudiante agregado correctamente."
 
 
-def eliminar_estudiante(nombre, grado):
-    estudiante = col_students.find_one({
-        "name": {"$regex": f"^{re.escape(normalizar_texto(nombre))}$", "$options": "i"},
-        "grade": {"$regex": f"^{re.escape(normalizar_texto(grado))}$", "$options": "i"}
-    })
-
-    if not estudiante:
-        return False, "No se encontró el estudiante en la base de datos."
-
-    resultado = col_students.delete_one({"_id": estudiante["_id"]})
+def eliminar_estudiante(student_id):
+    resultado = col_students.delete_one({"_id": student_id})
 
     if resultado.deleted_count > 0:
         return True, "Estudiante eliminado correctamente."
