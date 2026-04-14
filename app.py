@@ -6,10 +6,14 @@ import plotly.express as px
 import re
 from io import BytesIO
 
-# --- CONFIGURACIÓN DE PÁGINA ---
+# ======================================
+# CONFIGURACIÓN DE PÁGINA
+# ======================================
 st.set_page_config(page_title="MoodClass", page_icon="🎒", layout="centered")
 
-# --- CONEXIÓN SEGURA ---
+# ======================================
+# CONEXIÓN A MONGODB
+# ======================================
 try:
     uri = st.secrets["MONGO_URI"]
 except Exception:
@@ -26,12 +30,17 @@ db = get_database()
 col_moods = db["moods"]
 col_students = db["students"]
 
-
-# =========================
+# ======================================
 # FUNCIONES GENERALES
-# =========================
+# ======================================
 def normalizar_texto(texto):
     return re.sub(r"\s+", " ", str(texto).strip())
+
+
+def obtener_grado_seguro(valor):
+    if valor is None or str(valor).strip() == "":
+        return "Sin grado"
+    return str(valor).strip()
 
 
 def obtener_estudiantes():
@@ -48,8 +57,7 @@ def obtener_nombres_estudiantes():
 
     for e in estudiantes:
         if "name" in e:
-            grado = e.get("grade")
-            grado = "Sin grado" if grado is None or str(grado).strip() == "" else str(grado).strip()
+            grado = obtener_grado_seguro(e.get("grade"))
             nombres.append(f'{e["name"]} - {grado}')
 
     return nombres
@@ -59,10 +67,8 @@ def buscar_estudiante_por_label(label):
     estudiantes = obtener_estudiantes()
 
     for e in estudiantes:
-        grado = e.get("grade")
-        grado = "Sin grado" if grado is None or str(grado).strip() == "" else str(grado).strip()
+        grado = obtener_grado_seguro(e.get("grade"))
         actual = f'{e["name"]} - {grado}'
-
         if actual == label:
             return e
 
@@ -92,6 +98,7 @@ def agregar_estudiante(nombre, grado):
         "grade": grado,
         "created_at": datetime.now()
     })
+
     return True, "Estudiante agregado correctamente."
 
 
@@ -120,6 +127,10 @@ def numero_a_nombre_mes(numero_mes):
     return meses.get(numero_mes, f"Mes {numero_mes}")
 
 
+def texto_mes_anio(year, month):
+    return f"{numero_a_nombre_mes(month)} {year}"
+
+
 def obtener_opciones_meses():
     registros = list(col_moods.find({}, {"_id": 0, "month": 1, "year": 1}))
     opciones = set()
@@ -127,7 +138,6 @@ def obtener_opciones_meses():
     for r in registros:
         month = r.get("month")
         year = r.get("year")
-
         if month and year:
             opciones.add((year, month))
 
@@ -135,12 +145,7 @@ def obtener_opciones_meses():
         hoy = datetime.now()
         opciones.add((hoy.year, hoy.month))
 
-    opciones_ordenadas = sorted(list(opciones), reverse=True)
-    return opciones_ordenadas
-
-
-def texto_mes_anio(year, month):
-    return f"{numero_a_nombre_mes(month)} {year}"
+    return sorted(list(opciones), reverse=True)
 
 
 def obtener_dataframe_mensual(year, month, grado="Todos", momento="Todos"):
@@ -151,19 +156,20 @@ def obtener_dataframe_mensual(year, month, grado="Todos", momento="Todos"):
     if momento != "Todos":
         query["moment"] = momento
 
-    datos = list(col_moods.find(query))
-    if datos:
-        return pd.DataFrame(datos)
-    return pd.DataFrame()
+    datos = list(col_moods.find(query).sort("timestamp", -1))
+    return pd.DataFrame(datos) if datos else pd.DataFrame()
 
 
 def preparar_tabla_registros(df):
     columnas_mostrar = ["student_name", "grade", "day", "moment", "emotion", "reason", "timestamp"]
+
     for col in columnas_mostrar:
         if col not in df.columns:
             df[col] = ""
 
     df_mostrar = df[columnas_mostrar].copy()
+    df_mostrar["grade"] = df_mostrar["grade"].apply(obtener_grado_seguro)
+
     df_mostrar.columns = ["Nombre", "Grado", "Fecha", "Momento", "Emoción", "Motivo", "Fecha y hora"]
     return df_mostrar
 
@@ -185,9 +191,9 @@ def construir_comparacion_meses(df_mes_1, nombre_mes_1, df_mes_2, nombre_mes_2):
     return pd.DataFrame(filas)
 
 
-# =========================
+# ======================================
 # BOTIQUÍN EMOCIONAL
-# =========================
+# ======================================
 def obtener_motivos_frecuentes(df, top_n=3):
     if "reason" not in df.columns:
         return []
@@ -333,9 +339,9 @@ def mostrar_botiquin_emocional(df):
                 st.write(f"- {motivo}")
 
 
-# =========================
+# ======================================
 # DATOS DE INTERFAZ
-# =========================
+# ======================================
 motivos_por_emocion = {
     "😊 Feliz": [
         "Me fue bien en clase",
@@ -390,9 +396,9 @@ grados_disponibles = [
     "5to Secundaria"
 ]
 
-# =========================
+# ======================================
 # ESTILOS
-# =========================
+# ======================================
 st.markdown("""
 <style>
 .card {
@@ -416,22 +422,22 @@ st.markdown("""
 .section-title {
     font-size: 20px;
     font-weight: 700;
-    margin-top: 10px;
-    margin-bottom: 8px;
+    margin-top: 12px;
+    margin-bottom: 10px;
     color: #111827;
 }
 </style>
 """, unsafe_allow_html=True)
 
-# =========================
-# INTERFAZ
-# =========================
+# ======================================
+# INTERFAZ PRINCIPAL
+# ======================================
 st.title("🎒 MoodClass")
 tab1, tab2 = st.tabs(["👦 Estudiante", "🧑‍🏫 Docente"])
 
-# -------------------------
-# ESTUDIANTE
-# -------------------------
+# ======================================
+# PESTAÑA ESTUDIANTE
+# ======================================
 with tab1:
     st.subheader("Registro emocional del estudiante")
 
@@ -444,7 +450,7 @@ with tab1:
             estudiante_label = st.selectbox("Selecciona tu nombre", lista_estudiantes)
 
             estudiante_data = buscar_estudiante_por_label(estudiante_label)
-            grado_estudiante = estudiante_data.get("grade", "") if estudiante_data else ""
+            grado_estudiante = obtener_grado_seguro(estudiante_data.get("grade")) if estudiante_data else ""
 
             st.text_input("Grado", value=grado_estudiante, disabled=True)
 
@@ -473,7 +479,7 @@ with tab1:
                 else:
                     col_moods.insert_one({
                         "student_name": estudiante_data["name"],
-                        "grade": estudiante_data.get("grade", ""),
+                        "grade": obtener_grado_seguro(estudiante_data.get("grade")),
                         "day": str(date.today()),
                         "month": hoy.month,
                         "year": hoy.year,
@@ -484,9 +490,9 @@ with tab1:
                     })
                     st.success("¡Estado guardado correctamente!")
 
-# -------------------------
-# DOCENTE
-# -------------------------
+# ======================================
+# PESTAÑA DOCENTE
+# ======================================
 with tab2:
     st.subheader("🧑‍🏫 Panel docente")
     pin = st.text_input("PIN Docente", type="password")
@@ -532,6 +538,9 @@ with tab2:
             </div>
             """, unsafe_allow_html=True)
 
+        # ======================================
+        # GESTIÓN DE ESTUDIANTES
+        # ======================================
         st.markdown('<div class="section-title">Gestión de estudiantes</div>', unsafe_allow_html=True)
 
         col_a, col_b = st.columns(2)
@@ -568,20 +577,20 @@ with tab2:
                         if eliminar_btn:
                             estudiante_data = buscar_estudiante_por_label(estudiante_eliminar)
                             if estudiante_data:
-                                ok, mensaje = eliminar_estudiante(
-                                    estudiante_data["name"],
-                                    estudiante_data.get("grade", "")
-                                )
+                                ok, mensaje = eliminar_estudiante(estudiante_data["_id"])
                                 if ok:
-                                    st.success(mensaje)
+                                    st.success("✅ Estudiante eliminado correctamente")
                                     st.rerun()
                                 else:
-                                    st.warning(mensaje)
+                                    st.error(mensaje)
                             else:
                                 st.error("No se encontró el estudiante.")
                 else:
                     st.info("No hay estudiantes para eliminar.")
 
+        # ======================================
+        # LISTA DE ESTUDIANTES
+        # ======================================
         st.markdown('<div class="section-title">Lista de estudiantes</div>', unsafe_allow_html=True)
 
         if estudiantes_actuales:
@@ -590,6 +599,10 @@ with tab2:
             for col in ["name", "grade", "created_at"]:
                 if col not in df_students.columns:
                     df_students[col] = ""
+
+            df_students["name"] = df_students["name"].fillna("")
+            df_students["grade"] = df_students["grade"].apply(obtener_grado_seguro)
+            df_students["created_at"] = df_students["created_at"].fillna("")
 
             df_students = df_students.rename(columns={
                 "name": "Nombre",
@@ -611,6 +624,7 @@ with tab2:
         st.markdown('<div class="section-title">Reporte emocional del día</div>', unsafe_allow_html=True)
 
         filtro1, filtro2 = st.columns(2)
+
         with filtro1:
             filtro_grado = st.selectbox("Filtrar por grado", ["Todos"] + grados_disponibles, key="dia_grado")
         with filtro2:
@@ -622,7 +636,7 @@ with tab2:
         if filtro_momento != "Todos":
             query["moment"] = filtro_momento
 
-        datos = list(col_moods.find(query))
+        datos = list(col_moods.find(query).sort("timestamp", -1))
 
         if datos:
             df = pd.DataFrame(datos)
@@ -654,7 +668,6 @@ with tab2:
             mostrar_botiquin_emocional(df)
 
             st.markdown("### 📋 Registros del día")
-
             df_mostrar = preparar_tabla_registros(df)
             st.dataframe(df_mostrar, use_container_width=True, hide_index=True)
 
@@ -682,10 +695,8 @@ with tab2:
 
         with col_m1:
             mes_seleccionado_texto = st.selectbox("Selecciona el mes", opciones_meses_texto, key="mes_unico")
-
         with col_m2:
             filtro_grado_mes = st.selectbox("Filtrar grado", ["Todos"] + grados_disponibles, key="mes_grado")
-
         with col_m3:
             filtro_momento_mes = st.selectbox("Filtrar momento", ["Todos", "Entrada", "Salida"], key="mes_momento")
 
@@ -744,15 +755,14 @@ with tab2:
 
         with col_c1:
             mes_1_texto = st.selectbox("Primer mes", opciones_meses_texto, key="comparacion_mes_1")
-
         with col_c2:
-            mes_2_texto = st.selectbox("Segundo mes", opciones_meses_texto, index=1 if len(opciones_meses_texto) > 1 else 0, key="comparacion_mes_2")
+            indice_segundo = 1 if len(opciones_meses_texto) > 1 else 0
+            mes_2_texto = st.selectbox("Segundo mes", opciones_meses_texto, index=indice_segundo, key="comparacion_mes_2")
 
         comp_f1, comp_f2 = st.columns(2)
 
         with comp_f1:
             filtro_grado_comp = st.selectbox("Filtrar grado comparación", ["Todos"] + grados_disponibles, key="comp_grado")
-
         with comp_f2:
             filtro_momento_comp = st.selectbox("Filtrar momento comparación", ["Todos", "Entrada", "Salida"], key="comp_momento")
 
@@ -812,6 +822,208 @@ with tab2:
                 st.info(f"**{mes_2_texto}**\n\nTotal de registros: **{total_2}**")
         else:
             st.info("No hay datos para comparar.")
+
+        # ======================================
+        # REPORTE POR ESTUDIANTE O GRUPO
+        # ======================================
+        st.markdown('<div class="section-title">Seguimiento emocional individual y grupal</div>', unsafe_allow_html=True)
+
+        with st.container(border=True):
+            estudiantes_labels = ["Grupo completo"] + obtener_nombres_estudiantes()
+
+            col_r1, col_r2, col_r3, col_r4 = st.columns(4)
+
+            with col_r1:
+                tipo_reporte = st.selectbox(
+                    "Tipo de reporte",
+                    ["Por día", "Por mes"],
+                    key="tipo_reporte_estudiante"
+                )
+
+            with col_r2:
+                estudiante_seleccionado = st.selectbox(
+                    "Selecciona estudiante o grupo",
+                    estudiantes_labels,
+                    key="estudiante_reporte"
+                )
+
+            with col_r3:
+                filtro_grado_est = st.selectbox(
+                    "Filtrar grado",
+                    ["Todos"] + grados_disponibles,
+                    key="grado_reporte_estudiante"
+                )
+
+            with col_r4:
+                filtro_momento_est = st.selectbox(
+                    "Filtrar momento",
+                    ["Todos", "Entrada", "Salida"],
+                    key="momento_reporte_estudiante"
+                )
+
+            query_est = {}
+
+            if estudiante_seleccionado != "Grupo completo":
+                estudiante_data = buscar_estudiante_por_label(estudiante_seleccionado)
+                if estudiante_data:
+                    query_est["student_name"] = estudiante_data["name"]
+
+            if filtro_grado_est != "Todos":
+                query_est["grade"] = filtro_grado_est
+
+            if filtro_momento_est != "Todos":
+                query_est["moment"] = filtro_momento_est
+
+            if tipo_reporte == "Por día":
+                fecha_reporte = st.date_input(
+                    "Selecciona la fecha",
+                    value=date.today(),
+                    key="fecha_reporte_individual"
+                )
+
+                query_est["day"] = str(fecha_reporte)
+                datos_est = list(col_moods.find(query_est).sort("timestamp", -1))
+
+                if datos_est:
+                    df_est = pd.DataFrame(datos_est)
+
+                    if "emotion" not in df_est.columns:
+                        df_est["emotion"] = "Sin dato"
+
+                    titulo_reporte = (
+                        f"Reporte diario de {estudiante_seleccionado}"
+                        if estudiante_seleccionado != "Grupo completo"
+                        else "Reporte diario del grupo completo"
+                    )
+
+                    st.markdown(f"### {titulo_reporte}")
+
+                    mx1, mx2, mx3 = st.columns(3)
+                    with mx1:
+                        st.metric("Total registros", len(df_est))
+                    with mx2:
+                        emocion_top_est = df_est["emotion"].value_counts().idxmax()
+                        st.metric("Emoción más frecuente", emocion_top_est)
+                    with mx3:
+                        estudiantes_unicos = df_est["student_name"].nunique() if "student_name" in df_est.columns else 0
+                        st.metric("Estudiantes con registros", estudiantes_unicos)
+
+                    conteo_est = df_est["emotion"].value_counts().reset_index()
+                    conteo_est.columns = ["emocion", "count"]
+
+                    fig_est = px.bar(
+                        conteo_est,
+                        x="emocion",
+                        y="count",
+                        text="count",
+                        color="emocion",
+                        title=f"Distribución de emociones - {fecha_reporte}"
+                    )
+                    fig_est.update_layout(
+                        xaxis_title="Emoción",
+                        yaxis_title="Cantidad",
+                        showlegend=False,
+                        plot_bgcolor="white",
+                        paper_bgcolor="white",
+                        title_font_size=20
+                    )
+                    st.plotly_chart(fig_est, use_container_width=True)
+
+                    mostrar_botiquin_emocional(df_est)
+
+                    df_est_mostrar = preparar_tabla_registros(df_est)
+                    st.dataframe(df_est_mostrar, use_container_width=True, hide_index=True)
+
+                    excel_est = convertir_a_excel(df_est_mostrar, "Reporte_Diario")
+                    st.download_button(
+                        label="📥 Descargar reporte diario en Excel",
+                        data=excel_est,
+                        file_name=f"reporte_diario_{fecha_reporte}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=True,
+                        key="descargar_reporte_diario_estudiante"
+                    )
+                else:
+                    st.info("No hay registros para esa fecha con los filtros seleccionados.")
+
+            else:
+                opciones_meses_est = obtener_opciones_meses()
+                opciones_meses_est_texto = [texto_mes_anio(y, m) for y, m in opciones_meses_est]
+                mapa_meses_est = {texto_mes_anio(y, m): (y, m) for y, m in opciones_meses_est}
+
+                mes_est_texto = st.selectbox(
+                    "Selecciona el mes del reporte",
+                    opciones_meses_est_texto,
+                    key="mes_reporte_individual"
+                )
+
+                year_est, month_est = mapa_meses_est[mes_est_texto]
+                query_est["year"] = year_est
+                query_est["month"] = month_est
+
+                datos_est = list(col_moods.find(query_est).sort("timestamp", -1))
+
+                if datos_est:
+                    df_est = pd.DataFrame(datos_est)
+
+                    if "emotion" not in df_est.columns:
+                        df_est["emotion"] = "Sin dato"
+
+                    titulo_reporte = (
+                        f"Reporte mensual de {estudiante_seleccionado}"
+                        if estudiante_seleccionado != "Grupo completo"
+                        else "Reporte mensual del grupo completo"
+                    )
+
+                    st.markdown(f"### {titulo_reporte}")
+
+                    mx1, mx2, mx3 = st.columns(3)
+                    with mx1:
+                        st.metric("Total registros", len(df_est))
+                    with mx2:
+                        emocion_top_est = df_est["emotion"].value_counts().idxmax()
+                        st.metric("Emoción más frecuente", emocion_top_est)
+                    with mx3:
+                        estudiantes_unicos = df_est["student_name"].nunique() if "student_name" in df_est.columns else 0
+                        st.metric("Estudiantes con registros", estudiantes_unicos)
+
+                    conteo_est = df_est["emotion"].value_counts().reset_index()
+                    conteo_est.columns = ["emocion", "count"]
+
+                    fig_est = px.bar(
+                        conteo_est,
+                        x="emocion",
+                        y="count",
+                        text="count",
+                        color="emocion",
+                        title=f"Distribución de emociones - {mes_est_texto}"
+                    )
+                    fig_est.update_layout(
+                        xaxis_title="Emoción",
+                        yaxis_title="Cantidad",
+                        showlegend=False,
+                        plot_bgcolor="white",
+                        paper_bgcolor="white",
+                        title_font_size=20
+                    )
+                    st.plotly_chart(fig_est, use_container_width=True)
+
+                    mostrar_botiquin_emocional(df_est)
+
+                    df_est_mostrar = preparar_tabla_registros(df_est)
+                    st.dataframe(df_est_mostrar, use_container_width=True, hide_index=True)
+
+                    excel_est = convertir_a_excel(df_est_mostrar, "Reporte_Mensual")
+                    st.download_button(
+                        label="📥 Descargar reporte mensual en Excel",
+                        data=excel_est,
+                        file_name=f"reporte_mensual_{year_est}_{month_est}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=True,
+                        key="descargar_reporte_mensual_estudiante"
+                    )
+                else:
+                    st.info("No hay registros para ese mes con los filtros seleccionados.")
 
     elif pin != "":
         st.error("PIN incorrecto.")
