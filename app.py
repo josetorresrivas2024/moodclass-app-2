@@ -399,6 +399,22 @@ motivos_por_emocion = {
         "Estoy agotado(a)",
         "Fue un día pesado",
         "Otro"
+    ],
+    "😟 Preocupado": [
+        "Tengo un problema que no sé cómo resolver",
+        "Estoy pensando mucho en algo",
+        "Me preocupa un examen o tarea",
+        "Tengo dificultades en casa o con amigos",
+        "Siento incertidumbre por algo",
+        "Otro"
+    ],
+    "😰 Ansioso": [
+        "Tengo miedo de equivocarme",
+        "Siento presión por rendir bien",
+        "Estoy nervioso(a) por una presentación o examen",
+        "Siento que no tengo control",
+        "Me cuesta relajarme",
+        "Otro"
     ]
 }
 
@@ -477,7 +493,7 @@ with tab1:
             momento = st.selectbox("Momento", ["Entrada", "Salida"])
             emocion = st.selectbox(
                 "¿Cómo te sientes?",
-                ["😊 Feliz", "😐 Normal", "😢 Triste", "😡 Molesto", "😴 Cansado"]
+                ["😊 Feliz", "😐 Normal", "😢 Triste", "😡 Molesto", "😴 Cansado", "😰 Ansioso", "😟Preocupado"]
             )
 
             motivo = st.selectbox("¿Por qué te sientes así?", motivos_por_emocion[emocion])
