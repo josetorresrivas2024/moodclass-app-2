@@ -175,7 +175,7 @@ def preparar_tabla_registros(df):
 
 
 def construir_comparacion_meses(df_mes_1, nombre_mes_1, df_mes_2, nombre_mes_2):
-    emociones_base = ["😊 Feliz", "😐 Normal", "😢 Triste", "😡 Molesto", "😴 Cansado"]
+    emociones_base = ["😊 Feliz", "😐 Normal", "😢 Triste", "😡 Molesto", "😴 Cansado", "😰 Ansioso", "😟Preocupado"]
 
     conteo_1 = df_mes_1["emotion"].value_counts() if not df_mes_1.empty and "emotion" in df_mes_1.columns else pd.Series(dtype=int)
     conteo_2 = df_mes_2["emotion"].value_counts() if not df_mes_2.empty and "emotion" in df_mes_2.columns else pd.Series(dtype=int)
@@ -261,7 +261,27 @@ def obtener_botiquin_emocional(emocion_predominante, total_registros, porcentaje
             "guia_docente": "Haz que todos se pongan de pie si es posible. Luego inicia con una tarea corta y clara.",
             "visualizacion": "Invita a imaginar que encienden su energía poco a poco, como una luz que aumenta.",
             "materiales": "No requiere materiales."
-        }
+        },
+        "😟 Preocupado": {
+        "titulo": "Canalizar la preocupación",
+        "objetivo": "Ayudar a los estudiantes a identificar y expresar sus preocupaciones para reducir la carga emocional.",
+        "actividad_principal": "Semáforo de preocupaciones: escriben en un papel algo que les preocupa (rojo), algo que pueden controlar (amarillo) y una acción posible (verde).",
+        "duracion": "5 a 7 minutos",
+        "guia_docente": "Escucha sin juzgar. Valida emociones y guía a enfocarse en lo que sí pueden controlar.",
+        "visualizacion": "Pide que imaginen guardando su preocupación en una caja y cerrándola por un momento para poder concentrarse.",
+        "materiales": "Hojas pequeñas o post-its y lápices."
+        
+        },
+        "😰 Ansioso": {
+        "titulo": "Regular la ansiedad",
+        "objetivo": "Reducir la activación emocional mediante técnicas breves de respiración y enfoque.",
+        "actividad_principal": "Respiración 4-4-4: inhalar 4 segundos, sostener 4, exhalar 4 (repetir 4 veces).",
+        "duracion": "3 a 5 minutos",
+        "guia_docente": "Habla con voz calmada, marca el ritmo de la respiración y acompaña el ejercicio con pausas.",
+        "visualizacion": "Invita a imaginar una ola que sube al inhalar y baja al exhalar, siguiendo el ritmo de la respiración.",
+        "materiales": "No requiere materiales."
+         }
+
     }
 
     base = herramientas.get(
