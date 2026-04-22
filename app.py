@@ -175,8 +175,7 @@ def preparar_tabla_registros(df):
 
 
 def construir_comparacion_meses(df_mes_1, nombre_mes_1, df_mes_2, nombre_mes_2):
-    emociones_base = ["😊 Feliz", "😐 Normal", "😢 Triste", "😡 Molesto", "😴 Cansado", "😰 Ansioso", "😟Preocupado"]
-
+    emociones_base =["😊 Feliz", "😐 Normal", "😢 Triste", "😡 Molesto", "😴 Cansado", "😰 Ansioso", "😟 Preocupado"]
     conteo_1 = df_mes_1["emotion"].value_counts() if not df_mes_1.empty and "emotion" in df_mes_1.columns else pd.Series(dtype=int)
     conteo_2 = df_mes_2["emotion"].value_counts() if not df_mes_2.empty and "emotion" in df_mes_2.columns else pd.Series(dtype=int)
 
