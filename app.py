@@ -1,6 +1,7 @@
 import streamlit as st
 from pymongo import MongoClient
-from datetime import datetime, date
+from pymongo.errors import PyMongoError
+from datetime import datetime, date, time
 import pandas as pd
 import plotly.express as px
 import re
@@ -12,23 +13,171 @@ from io import BytesIO
 st.set_page_config(page_title="MoodClass", page_icon="🎒", layout="centered")
 
 # ======================================
+# CONSTANTES
+# ======================================
+EMOCIONES = [
+    "😊 Feliz",
+    "😐 Normal",
+    "😢 Triste",
+    "😡 Molesto",
+    "😴 Cansado",
+    "😰 Ansioso",
+    "😟 Preocupado"
+]
+
+GRADOS_DISPONIBLES = [
+    "1ro Primaria",
+    "2do Primaria",
+    "3ro Primaria",
+    "4to Primaria",
+    "5to Primaria",
+    "6to Primaria",
+    "1ro Secundaria",
+    "2do Secundaria",
+    "3ro Secundaria",
+    "4to Secundaria",
+    "5to Secundaria"
+]
+
+MOTIVOS_POR_EMOCION = {
+    "😊 Feliz": [
+        "Me fue bien en clase",
+        "Jugué con mis amigos",
+        "Mi familia me apoyó",
+        "Aprendí algo nuevo",
+        "Tuve un buen día",
+        "Otro"
+    ],
+    "😐 Normal": [
+        "Todo estuvo tranquilo",
+        "Fue un día común",
+        "No pasó nada especial",
+        "Me siento estable",
+        "Otro"
+    ],
+    "😢 Triste": [
+        "Tuve un problema en casa",
+        "Discutí con un amigo",
+        "Me fue mal en una tarea",
+        "Me siento solo(a)",
+        "Extraño a alguien",
+        "Otro"
+    ],
+    "😡 Molesto": [
+        "Me molestaron",
+        "Discutí con alguien",
+        "No salió algo como quería",
+        "Tuve un mal momento",
+        "Otro"
+    ],
+    "😴 Cansado": [
+        "Dormí poco",
+        "Tuve muchas actividades",
+        "Estoy agotado(a)",
+        "Fue un día pesado",
+        "Otro"
+    ],
+    "😟 Preocupado": [
+        "Tengo un problema que no sé cómo resolver",
+        "Estoy pensando mucho en algo",
+        "Me preocupa un examen o tarea",
+        "Tengo dificultades en casa o con amigos",
+        "Siento incertidumbre por algo",
+        "Otro"
+    ],
+    "😰 Ansioso": [
+        "Tengo miedo de equivocarme",
+        "Siento presión por rendir bien",
+        "Estoy nervioso(a) por una presentación o examen",
+        "Siento que no tengo control",
+        "Me cuesta relajarme",
+        "Otro"
+    ]
+}
+
+# ======================================
+# ESTILOS
+# ======================================
+st.markdown("""
+<style>
+.card {
+    padding: 18px;
+    border-radius: 18px;
+    background: #f7f9fc;
+    border: 1px solid #e6eaf2;
+    margin-bottom: 12px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.06);
+}
+.card h4 {
+    margin: 0;
+    font-size: 16px;
+    color: #374151;
+}
+.card h2 {
+    margin: 8px 0 0 0;
+    font-size: 28px;
+    color: #111827;
+}
+.section-title {
+    font-size: 20px;
+    font-weight: 700;
+    margin-top: 12px;
+    margin-bottom: 10px;
+    color: #111827;
+}
+.small-muted {
+    font-size: 12px;
+    color: #6b7280;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# ======================================
+# CONFIGURACIÓN SEGURA
+# ======================================
+def obtener_secreto(nombre, default=None):
+    try:
+        return st.secrets[nombre]
+    except Exception:
+        return default
+
+
+MONGO_URI = obtener_secreto("MONGO_URI", "")
+DOCENTE_PIN = str(obtener_secreto("DOCENTE_PIN", "1234"))
+
+
+# ======================================
 # CONEXIÓN A MONGODB
 # ======================================
-try:
-    uri = st.secrets["MONGO_URI"]
-except Exception:
-    uri = "mongodb+srv://TU_USUARIO:TU_PASSWORD@cluster0.hzl7cg0.mongodb.net/moodclass_db?retryWrites=true&w=majority&appName=Cluster0"
-
-
 @st.cache_resource
 def get_database():
-    client = MongoClient(uri)
-    return client["moodclass_db"]
+    if not MONGO_URI:
+        raise ValueError("No se encontró MONGO_URI en st.secrets.")
+
+    client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
+    client.admin.command("ping")
+    db = client["moodclass_db"]
+
+    # Índices recomendados
+    db["students"].create_index([("name", 1), ("grade", 1)], unique=False)
+    db["moods"].create_index([("day", 1), ("moment", 1), ("student_id", 1)])
+    db["moods"].create_index([("year", 1), ("month", 1)])
+    db["moods"].create_index([("student_name", 1)])
+    db["moods"].create_index([("grade", 1)])
+    return db
 
 
-db = get_database()
-col_moods = db["moods"]
-col_students = db["students"]
+try:
+    db = get_database()
+    col_moods = db["moods"]
+    col_students = db["students"]
+    DB_OK = True
+except Exception as e:
+    DB_OK = False
+    col_moods = None
+    col_students = None
+    st.error(f"No se pudo conectar a MongoDB: {e}")
+
 
 # ======================================
 # FUNCIONES GENERALES
@@ -44,38 +193,57 @@ def obtener_grado_seguro(valor):
 
 
 def obtener_estudiantes():
-    estudiantes = list(
-        col_students.find({}, {"name": 1, "grade": 1, "created_at": 1})
-        .sort([("grade", 1), ("name", 1)])
-    )
-    return estudiantes
+    if not DB_OK:
+        return []
+
+    try:
+        estudiantes = list(
+            col_students.find({}, {"name": 1, "grade": 1, "created_at": 1})
+            .sort([("grade", 1), ("name", 1)])
+        )
+        return estudiantes
+    except PyMongoError:
+        return []
 
 
-def obtener_nombres_estudiantes():
+def construir_label_estudiante(estudiante):
+    nombre = normalizar_texto(estudiante.get("name", "Sin nombre"))
+    grado = obtener_grado_seguro(estudiante.get("grade"))
+    return f"{nombre} - {grado}"
+
+
+def obtener_opciones_estudiantes():
     estudiantes = obtener_estudiantes()
-    nombres = []
+    opciones = []
 
     for e in estudiantes:
-        if "name" in e:
-            grado = obtener_grado_seguro(e.get("grade"))
-            nombres.append(f'{e["name"]} - {grado}')
+        opciones.append({
+            "label": construir_label_estudiante(e),
+            "id": str(e["_id"]),
+            "name": e.get("name", ""),
+            "grade": obtener_grado_seguro(e.get("grade"))
+        })
 
-    return nombres
+    return opciones
 
 
-def buscar_estudiante_por_label(label):
-    estudiantes = obtener_estudiantes()
+def buscar_estudiante_por_id(student_id):
+    if not DB_OK or not student_id:
+        return None
 
-    for e in estudiantes:
-        grado = obtener_grado_seguro(e.get("grade"))
-        actual = f'{e["name"]} - {grado}'
-        if actual == label:
-            return e
-
-    return None
+    try:
+        from bson import ObjectId
+        if not ObjectId.is_valid(student_id):
+            return None
+        return col_students.find_one({"_id": ObjectId(student_id)})
+    except Exception:
+        return None
 
 
 def agregar_estudiante(nombre, grado):
+    if not DB_OK:
+        return False, "No hay conexión con la base de datos."
+
     nombre = normalizar_texto(nombre)
     grado = normalizar_texto(grado)
 
@@ -85,29 +253,46 @@ def agregar_estudiante(nombre, grado):
     if not grado:
         return False, "Selecciona un grado."
 
-    existe = col_students.find_one({
-        "name": {"$regex": f"^{re.escape(nombre)}$", "$options": "i"},
-        "grade": {"$regex": f"^{re.escape(grado)}$", "$options": "i"}
-    })
+    try:
+        existe = col_students.find_one({
+            "name": {"$regex": f"^{re.escape(nombre)}$", "$options": "i"},
+            "grade": {"$regex": f"^{re.escape(grado)}$", "$options": "i"}
+        })
 
-    if existe:
-        return False, "Ese estudiante ya está registrado en ese grado."
+        if existe:
+            return False, "Ese estudiante ya está registrado en ese grado."
 
-    col_students.insert_one({
-        "name": nombre,
-        "grade": grado,
-        "created_at": datetime.now()
-    })
+        col_students.insert_one({
+            "name": nombre,
+            "grade": grado,
+            "created_at": datetime.now()
+        })
 
-    return True, "Estudiante agregado correctamente."
+        return True, "Estudiante agregado correctamente."
+    except PyMongoError as e:
+        return False, f"Error al agregar estudiante: {e}"
 
 
-def eliminar_estudiante(student_id):
-    resultado = col_students.delete_one({"_id": student_id})
+def eliminar_estudiante(student_id, eliminar_registros_asociados=False):
+    if not DB_OK:
+        return False, "No hay conexión con la base de datos."
 
-    if resultado.deleted_count > 0:
+    estudiante = buscar_estudiante_por_id(student_id)
+    if not estudiante:
+        return False, "No se encontró el estudiante."
+
+    try:
+        resultado = col_students.delete_one({"_id": estudiante["_id"]})
+
+        if resultado.deleted_count == 0:
+            return False, "No se pudo eliminar el estudiante."
+
+        if eliminar_registros_asociados:
+            col_moods.delete_many({"student_id": str(estudiante["_id"])})
+
         return True, "Estudiante eliminado correctamente."
-    return False, "No se pudo eliminar el estudiante."
+    except PyMongoError as e:
+        return False, f"Error al eliminar estudiante: {e}"
 
 
 def convertir_a_excel(df, nombre_hoja="Reporte"):
@@ -132,23 +317,33 @@ def texto_mes_anio(year, month):
 
 
 def obtener_opciones_meses():
-    registros = list(col_moods.find({}, {"_id": 0, "month": 1, "year": 1}))
-    opciones = set()
+    if not DB_OK:
+        return []
 
-    for r in registros:
-        month = r.get("month")
-        year = r.get("year")
-        if month and year:
-            opciones.add((year, month))
+    try:
+        registros = list(col_moods.find({}, {"_id": 0, "month": 1, "year": 1}))
+        opciones = set()
 
-    if not opciones:
+        for r in registros:
+            month = r.get("month")
+            year = r.get("year")
+            if month and year:
+                opciones.add((year, month))
+
+        if not opciones:
+            hoy = datetime.now()
+            opciones.add((hoy.year, hoy.month))
+
+        return sorted(list(opciones), reverse=True)
+    except PyMongoError:
         hoy = datetime.now()
-        opciones.add((hoy.year, hoy.month))
-
-    return sorted(list(opciones), reverse=True)
+        return [(hoy.year, hoy.month)]
 
 
 def obtener_dataframe_mensual(year, month, grado="Todos", momento="Todos"):
+    if not DB_OK:
+        return pd.DataFrame()
+
     query = {"year": year, "month": month}
 
     if grado != "Todos":
@@ -156,18 +351,26 @@ def obtener_dataframe_mensual(year, month, grado="Todos", momento="Todos"):
     if momento != "Todos":
         query["moment"] = momento
 
-    datos = list(col_moods.find(query).sort("timestamp", -1))
-    return pd.DataFrame(datos) if datos else pd.DataFrame()
+    try:
+        datos = list(col_moods.find(query).sort("timestamp", -1))
+        return pd.DataFrame(datos) if datos else pd.DataFrame()
+    except PyMongoError:
+        return pd.DataFrame()
 
 
 def preparar_tabla_registros(df):
+    if df.empty:
+        return pd.DataFrame(columns=["Nombre", "Grado", "Fecha", "Momento", "Emoción", "Motivo", "Fecha y hora"])
+
+    df_local = df.copy()
+
     columnas_mostrar = ["student_name", "grade", "day", "moment", "emotion", "reason", "timestamp"]
 
     for col in columnas_mostrar:
-        if col not in df.columns:
-            df[col] = ""
+        if col not in df_local.columns:
+            df_local[col] = ""
 
-    df_mostrar = df[columnas_mostrar].copy()
+    df_mostrar = df_local[columnas_mostrar].copy()
     df_mostrar["grade"] = df_mostrar["grade"].apply(obtener_grado_seguro)
 
     df_mostrar.columns = ["Nombre", "Grado", "Fecha", "Momento", "Emoción", "Motivo", "Fecha y hora"]
@@ -175,12 +378,11 @@ def preparar_tabla_registros(df):
 
 
 def construir_comparacion_meses(df_mes_1, nombre_mes_1, df_mes_2, nombre_mes_2):
-    emociones_base =["😊 Feliz", "😐 Normal", "😢 Triste", "😡 Molesto", "😴 Cansado", "😰 Ansioso", "😟 Preocupado"]
     conteo_1 = df_mes_1["emotion"].value_counts() if not df_mes_1.empty and "emotion" in df_mes_1.columns else pd.Series(dtype=int)
     conteo_2 = df_mes_2["emotion"].value_counts() if not df_mes_2.empty and "emotion" in df_mes_2.columns else pd.Series(dtype=int)
 
     filas = []
-    for emocion in emociones_base:
+    for emocion in EMOCIONES:
         filas.append({
             "Emoción": emocion,
             nombre_mes_1: int(conteo_1.get(emocion, 0)),
@@ -188,6 +390,21 @@ def construir_comparacion_meses(df_mes_1, nombre_mes_1, df_mes_2, nombre_mes_2):
         })
 
     return pd.DataFrame(filas)
+
+
+def existe_registro_duplicado(student_id, fecha_str, momento):
+    if not DB_OK:
+        return False
+
+    try:
+        existente = col_moods.find_one({
+            "student_id": student_id,
+            "day": fecha_str,
+            "moment": momento
+        })
+        return existente is not None
+    except PyMongoError:
+        return False
 
 
 # ======================================
@@ -262,25 +479,23 @@ def obtener_botiquin_emocional(emocion_predominante, total_registros, porcentaje
             "materiales": "No requiere materiales."
         },
         "😟 Preocupado": {
-        "titulo": "Canalizar la preocupación",
-        "objetivo": "Ayudar a los estudiantes a identificar y expresar sus preocupaciones para reducir la carga emocional.",
-        "actividad_principal": "Semáforo de preocupaciones: escriben en un papel algo que les preocupa (rojo), algo que pueden controlar (amarillo) y una acción posible (verde).",
-        "duracion": "5 a 7 minutos",
-        "guia_docente": "Escucha sin juzgar. Valida emociones y guía a enfocarse en lo que sí pueden controlar.",
-        "visualizacion": "Pide que imaginen guardando su preocupación en una caja y cerrándola por un momento para poder concentrarse.",
-        "materiales": "Hojas pequeñas o post-its y lápices."
-        
+            "titulo": "Canalizar la preocupación",
+            "objetivo": "Ayudar a los estudiantes a identificar y expresar sus preocupaciones para reducir la carga emocional.",
+            "actividad_principal": "Semáforo de preocupaciones: escriben en un papel algo que les preocupa (rojo), algo que pueden controlar (amarillo) y una acción posible (verde).",
+            "duracion": "5 a 7 minutos",
+            "guia_docente": "Escucha sin juzgar. Valida emociones y guía a enfocarse en lo que sí pueden controlar.",
+            "visualizacion": "Pide que imaginen guardando su preocupación en una caja y cerrándola por un momento para poder concentrarse.",
+            "materiales": "Hojas pequeñas o post-its y lápices."
         },
         "😰 Ansioso": {
-        "titulo": "Regular la ansiedad",
-        "objetivo": "Reducir la activación emocional mediante técnicas breves de respiración y enfoque.",
-        "actividad_principal": "Respiración 4-4-4: inhalar 4 segundos, sostener 4, exhalar 4 (repetir 4 veces).",
-        "duracion": "3 a 5 minutos",
-        "guia_docente": "Habla con voz calmada, marca el ritmo de la respiración y acompaña el ejercicio con pausas.",
-        "visualizacion": "Invita a imaginar una ola que sube al inhalar y baja al exhalar, siguiendo el ritmo de la respiración.",
-        "materiales": "No requiere materiales."
-         }
-
+            "titulo": "Regular la ansiedad",
+            "objetivo": "Reducir la activación emocional mediante técnicas breves de respiración y enfoque.",
+            "actividad_principal": "Respiración 4-4-4: inhalar 4 segundos, sostener 4, exhalar 4 (repetir 4 veces).",
+            "duracion": "3 a 5 minutos",
+            "guia_docente": "Habla con voz calmada, marca el ritmo de la respiración y acompaña el ejercicio con pausas.",
+            "visualizacion": "Invita a imaginar una ola que sube al inhalar y baja al exhalar, siguiendo el ritmo de la respiración.",
+            "materiales": "No requiere materiales."
+        }
     }
 
     base = herramientas.get(
@@ -359,115 +574,13 @@ def mostrar_botiquin_emocional(df):
 
 
 # ======================================
-# DATOS DE INTERFAZ
-# ======================================
-motivos_por_emocion = {
-    "😊 Feliz": [
-        "Me fue bien en clase",
-        "Jugué con mis amigos",
-        "Mi familia me apoyó",
-        "Aprendí algo nuevo",
-        "Tuve un buen día",
-        "Otro"
-    ],
-    "😐 Normal": [
-        "Todo estuvo tranquilo",
-        "Fue un día común",
-        "No pasó nada especial",
-        "Me siento estable",
-        "Otro"
-    ],
-    "😢 Triste": [
-        "Tuve un problema en casa",
-        "Discutí con un amigo",
-        "Me fue mal en una tarea",
-        "Me siento solo(a)",
-        "Extraño a alguien",
-        "Otro"
-    ],
-    "😡 Molesto": [
-        "Me molestaron",
-        "Discutí con alguien",
-        "No salió algo como quería",
-        "Tuve un mal momento",
-        "Otro"
-    ],
-    "😴 Cansado": [
-        "Dormí poco",
-        "Tuve muchas actividades",
-        "Estoy agotado(a)",
-        "Fue un día pesado",
-        "Otro"
-    ],
-    "😟 Preocupado": [
-        "Tengo un problema que no sé cómo resolver",
-        "Estoy pensando mucho en algo",
-        "Me preocupa un examen o tarea",
-        "Tengo dificultades en casa o con amigos",
-        "Siento incertidumbre por algo",
-        "Otro"
-    ],
-    "😰 Ansioso": [
-        "Tengo miedo de equivocarme",
-        "Siento presión por rendir bien",
-        "Estoy nervioso(a) por una presentación o examen",
-        "Siento que no tengo control",
-        "Me cuesta relajarme",
-        "Otro"
-    ]
-}
-
-grados_disponibles = [
-    "1ro Primaria",
-    "2do Primaria",
-    "3ro Primaria",
-    "4to Primaria",
-    "5to Primaria",
-    "6to Primaria",
-    "1ro Secundaria",
-    "2do Secundaria",
-    "3ro Secundaria",
-    "4to Secundaria",
-    "5to Secundaria"
-]
-
-# ======================================
-# ESTILOS
-# ======================================
-st.markdown("""
-<style>
-.card {
-    padding: 18px;
-    border-radius: 18px;
-    background: #f7f9fc;
-    border: 1px solid #e6eaf2;
-    margin-bottom: 12px;
-    box-shadow: 0 4px 14px rgba(0,0,0,0.06);
-}
-.card h4 {
-    margin: 0;
-    font-size: 16px;
-    color: #374151;
-}
-.card h2 {
-    margin: 8px 0 0 0;
-    font-size: 28px;
-    color: #111827;
-}
-.section-title {
-    font-size: 20px;
-    font-weight: 700;
-    margin-top: 12px;
-    margin-bottom: 10px;
-    color: #111827;
-}
-</style>
-""", unsafe_allow_html=True)
-
-# ======================================
 # INTERFAZ PRINCIPAL
 # ======================================
 st.title("🎒 MoodClass")
+
+if not DB_OK:
+    st.stop()
+
 tab1, tab2 = st.tabs(["👦 Estudiante", "🧑‍🏫 Docente"])
 
 # ======================================
@@ -476,26 +589,27 @@ tab1, tab2 = st.tabs(["👦 Estudiante", "🧑‍🏫 Docente"])
 with tab1:
     st.subheader("Registro emocional del estudiante")
 
-    lista_estudiantes = obtener_nombres_estudiantes()
+    opciones_estudiantes = obtener_opciones_estudiantes()
 
-    if not lista_estudiantes:
+    if not opciones_estudiantes:
         st.warning("No hay estudiantes registrados. El docente debe agregar estudiantes primero.")
     else:
-        with st.form("registro_emocion"):
-            estudiante_label = st.selectbox("Selecciona tu nombre", lista_estudiantes)
+        mapa_estudiantes = {opt["label"]: opt for opt in opciones_estudiantes}
 
-            estudiante_data = buscar_estudiante_por_label(estudiante_label)
-            grado_estudiante = obtener_grado_seguro(estudiante_data.get("grade")) if estudiante_data else ""
+        with st.form("registro_emocion"):
+            estudiante_label = st.selectbox(
+                "Selecciona tu nombre",
+                [opt["label"] for opt in opciones_estudiantes]
+            )
+
+            estudiante_sel = mapa_estudiantes.get(estudiante_label)
+            grado_estudiante = estudiante_sel["grade"] if estudiante_sel else ""
 
             st.text_input("Grado", value=grado_estudiante, disabled=True)
 
             momento = st.selectbox("Momento", ["Entrada", "Salida"])
-            emocion = st.selectbox(
-                "¿Cómo te sientes?",
-                ["😊 Feliz", "😐 Normal", "😢 Triste", "😡 Molesto", "😴 Cansado", "😰 Ansioso", "😟Preocupado"]
-            )
-
-            motivo = st.selectbox("¿Por qué te sientes así?", motivos_por_emocion[emocion])
+            emocion = st.selectbox("¿Cómo te sientes?", EMOCIONES)
+            motivo = st.selectbox("¿Por qué te sientes así?", MOTIVOS_POR_EMOCION[emocion])
 
             detalle_otro = ""
             if motivo == "Otro":
@@ -504,26 +618,34 @@ with tab1:
             guardar = st.form_submit_button("Guardar Estado")
 
             if guardar:
-                motivo_final = detalle_otro.strip() if motivo == "Otro" else motivo
-                hoy = datetime.now()
-
-                if motivo == "Otro" and not motivo_final:
-                    st.warning("Por favor, escribe el motivo.")
-                elif estudiante_data is None:
+                if estudiante_sel is None:
                     st.error("No se encontró el estudiante seleccionado.")
                 else:
-                    col_moods.insert_one({
-                        "student_name": estudiante_data["name"],
-                        "grade": obtener_grado_seguro(estudiante_data.get("grade")),
-                        "day": str(date.today()),
-                        "month": hoy.month,
-                        "year": hoy.year,
-                        "moment": momento,
-                        "emotion": emocion,
-                        "reason": motivo_final,
-                        "timestamp": hoy
-                    })
-                    st.success("¡Estado guardado correctamente!")
+                    motivo_final = normalizar_texto(detalle_otro) if motivo == "Otro" else motivo
+                    fecha_hoy = str(date.today())
+                    ahora = datetime.now()
+
+                    if motivo == "Otro" and not motivo_final:
+                        st.warning("Por favor, escribe el motivo.")
+                    elif existe_registro_duplicado(estudiante_sel["id"], fecha_hoy, momento):
+                        st.warning(f"Ya existe un registro de {momento.lower()} para este estudiante el día de hoy.")
+                    else:
+                        try:
+                            col_moods.insert_one({
+                                "student_id": estudiante_sel["id"],
+                                "student_name": estudiante_sel["name"],
+                                "grade": estudiante_sel["grade"],
+                                "day": fecha_hoy,
+                                "month": ahora.month,
+                                "year": ahora.year,
+                                "moment": momento,
+                                "emotion": emocion,
+                                "reason": motivo_final,
+                                "timestamp": ahora
+                            })
+                            st.success("¡Estado guardado correctamente!")
+                        except PyMongoError as e:
+                            st.error(f"No se pudo guardar el registro: {e}")
 
 # ======================================
 # PESTAÑA DOCENTE
@@ -532,10 +654,14 @@ with tab2:
     st.subheader("🧑‍🏫 Panel docente")
     pin = st.text_input("PIN Docente", type="password")
 
-    if pin == "1234":
+    if pin == DOCENTE_PIN:
         st.success("✅ Acceso autorizado")
 
-        datos_hoy = list(col_moods.find({"day": str(date.today())}))
+        try:
+            datos_hoy = list(col_moods.find({"day": str(date.today())}))
+        except PyMongoError:
+            datos_hoy = []
+
         estudiantes_actuales = obtener_estudiantes()
 
         total_registros = len(datos_hoy)
@@ -585,7 +711,7 @@ with tab2:
                 st.markdown("### ➕ Agregar estudiante")
                 with st.form("form_agregar_estudiante"):
                     nuevo_estudiante = st.text_input("Nombre del nuevo estudiante")
-                    nuevo_grado = st.selectbox("Grado", grados_disponibles)
+                    nuevo_grado = st.selectbox("Grado", GRADOS_DISPONIBLES)
                     guardar_estudiante = st.form_submit_button("Agregar estudiante", use_container_width=True)
 
                     if guardar_estudiante:
@@ -599,27 +725,32 @@ with tab2:
         with col_b:
             with st.container(border=True):
                 st.markdown("### 🗑️ Eliminar estudiante")
-                estudiantes_actuales_labels = obtener_nombres_estudiantes()
+                opciones_eliminar = obtener_opciones_estudiantes()
 
-                if estudiantes_actuales_labels:
+                if opciones_eliminar:
+                    mapa_eliminar = {opt["label"]: opt["id"] for opt in opciones_eliminar}
+
                     with st.form("form_eliminar_estudiante"):
                         estudiante_eliminar = st.selectbox(
                             "Selecciona estudiante a eliminar",
-                            estudiantes_actuales_labels
+                            list(mapa_eliminar.keys())
                         )
+
+                        eliminar_registros = st.checkbox(
+                            "Eliminar también sus registros emocionales",
+                            value=False
+                        )
+
                         eliminar_btn = st.form_submit_button("Eliminar estudiante", use_container_width=True)
 
                         if eliminar_btn:
-                            estudiante_data = buscar_estudiante_por_label(estudiante_eliminar)
-                            if estudiante_data:
-                                ok, mensaje = eliminar_estudiante(estudiante_data["_id"])
-                                if ok:
-                                    st.success("✅ Estudiante eliminado correctamente")
-                                    st.rerun()
-                                else:
-                                    st.error(mensaje)
+                            student_id = mapa_eliminar.get(estudiante_eliminar)
+                            ok, mensaje = eliminar_estudiante(student_id, eliminar_registros_asociados=eliminar_registros)
+                            if ok:
+                                st.success(mensaje)
+                                st.rerun()
                             else:
-                                st.error("No se encontró el estudiante.")
+                                st.error(mensaje)
                 else:
                     st.info("No hay estudiantes para eliminar.")
 
@@ -661,7 +792,7 @@ with tab2:
         filtro1, filtro2 = st.columns(2)
 
         with filtro1:
-            filtro_grado = st.selectbox("Filtrar por grado", ["Todos"] + grados_disponibles, key="dia_grado")
+            filtro_grado = st.selectbox("Filtrar por grado", ["Todos"] + GRADOS_DISPONIBLES, key="dia_grado")
         with filtro2:
             filtro_momento = st.selectbox("Filtrar por momento", ["Todos", "Entrada", "Salida"], key="dia_momento")
 
@@ -671,7 +802,10 @@ with tab2:
         if filtro_momento != "Todos":
             query["moment"] = filtro_momento
 
-        datos = list(col_moods.find(query).sort("timestamp", -1))
+        try:
+            datos = list(col_moods.find(query).sort("timestamp", -1))
+        except PyMongoError:
+            datos = []
 
         if datos:
             df = pd.DataFrame(datos)
@@ -731,7 +865,7 @@ with tab2:
         with col_m1:
             mes_seleccionado_texto = st.selectbox("Selecciona el mes", opciones_meses_texto, key="mes_unico")
         with col_m2:
-            filtro_grado_mes = st.selectbox("Filtrar grado", ["Todos"] + grados_disponibles, key="mes_grado")
+            filtro_grado_mes = st.selectbox("Filtrar grado", ["Todos"] + GRADOS_DISPONIBLES, key="mes_grado")
         with col_m3:
             filtro_momento_mes = st.selectbox("Filtrar momento", ["Todos", "Entrada", "Salida"], key="mes_momento")
 
@@ -797,7 +931,7 @@ with tab2:
         comp_f1, comp_f2 = st.columns(2)
 
         with comp_f1:
-            filtro_grado_comp = st.selectbox("Filtrar grado comparación", ["Todos"] + grados_disponibles, key="comp_grado")
+            filtro_grado_comp = st.selectbox("Filtrar grado comparación", ["Todos"] + GRADOS_DISPONIBLES, key="comp_grado")
         with comp_f2:
             filtro_momento_comp = st.selectbox("Filtrar momento comparación", ["Todos", "Entrada", "Salida"], key="comp_momento")
 
@@ -864,7 +998,9 @@ with tab2:
         st.markdown('<div class="section-title">Seguimiento emocional individual y grupal</div>', unsafe_allow_html=True)
 
         with st.container(border=True):
-            estudiantes_labels = ["Grupo completo"] + obtener_nombres_estudiantes()
+            opciones_reporte = obtener_opciones_estudiantes()
+            estudiantes_labels = ["Grupo completo"] + [opt["label"] for opt in opciones_reporte]
+            mapa_reporte = {opt["label"]: opt for opt in opciones_reporte}
 
             col_r1, col_r2, col_r3, col_r4 = st.columns(4)
 
@@ -885,7 +1021,7 @@ with tab2:
             with col_r3:
                 filtro_grado_est = st.selectbox(
                     "Filtrar grado",
-                    ["Todos"] + grados_disponibles,
+                    ["Todos"] + GRADOS_DISPONIBLES,
                     key="grado_reporte_estudiante"
                 )
 
@@ -899,9 +1035,9 @@ with tab2:
             query_est = {}
 
             if estudiante_seleccionado != "Grupo completo":
-                estudiante_data = buscar_estudiante_por_label(estudiante_seleccionado)
+                estudiante_data = mapa_reporte.get(estudiante_seleccionado)
                 if estudiante_data:
-                    query_est["student_name"] = estudiante_data["name"]
+                    query_est["student_id"] = estudiante_data["id"]
 
             if filtro_grado_est != "Todos":
                 query_est["grade"] = filtro_grado_est
@@ -917,7 +1053,11 @@ with tab2:
                 )
 
                 query_est["day"] = str(fecha_reporte)
-                datos_est = list(col_moods.find(query_est).sort("timestamp", -1))
+
+                try:
+                    datos_est = list(col_moods.find(query_est).sort("timestamp", -1))
+                except PyMongoError:
+                    datos_est = []
 
                 if datos_est:
                     df_est = pd.DataFrame(datos_est)
@@ -996,7 +1136,10 @@ with tab2:
                 query_est["year"] = year_est
                 query_est["month"] = month_est
 
-                datos_est = list(col_moods.find(query_est).sort("timestamp", -1))
+                try:
+                    datos_est = list(col_moods.find(query_est).sort("timestamp", -1))
+                except PyMongoError:
+                    datos_est = []
 
                 if datos_est:
                     df_est = pd.DataFrame(datos_est)
